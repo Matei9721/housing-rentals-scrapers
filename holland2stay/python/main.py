@@ -8,16 +8,16 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import WebDriverException
 from dotenv import load_dotenv
-import mailtrap as mt
+import smtplib
 
 URL = "https://www.holland2stay.com/residences?page=1&filter=Leiden&city%5Bfilter%5D=Leiden%2C6293"
 CHECK_INTERVAL = 300  # seconds
 BOOKING_HISTORY_FILE = os.path.join(os.path.dirname(__file__), "booking_history.json")
 
 load_dotenv()
-MAILTRAP_TOKEN = os.getenv("MAILTRAP_TOKEN")
-MAILTRAP_TO_EMAIL = os.getenv("MAILTRAP_TO_EMAIL")
-MAILTRAP_FROM_EMAIL = os.getenv("MAILTRAP_FROM_EMAIL", "mailtrap@example.com")
+GMAIL_FROM_EMAIL = os.getenv("GMAIL_FROM_EMAIL")
+GMAIL_FROM_EMAIL_PASSWORD = os.getenv("GMAIL_FROM_EMAIL_PASSWORD")
+GMAIL_TO_EMAILS = [email.strip() for email in os.getenv("GMAIL_TO_EMAIL", "").split(",") if email.strip()]
 
 
 def load_last_booking():
@@ -101,23 +101,22 @@ def get_available_count():
                 print("Error closing WebDriver.", e)
 
 
-def send_email(subject, body, to_email):
-    if not MAILTRAP_TOKEN or not to_email:
-        print("Mailtrap token or recipient email not set in .env file.")
+
+
+def send_email(subject, body, to_emails):
+    if not GMAIL_FROM_EMAIL or not GMAIL_FROM_EMAIL_PASSWORD or not to_emails:
+        print("Gmail credentials or recipient email(s) not set in .env file.")
         return
     try:
-        mail = mt.Mail(
-            sender=mt.Address(email=MAILTRAP_FROM_EMAIL, name="H2S Notifier"),
-            to=[mt.Address(email=to_email)],
-            subject=subject,
-            text=body,
-            category="Automatic Notification",
-        )
-        client = mt.MailtrapClient(token=MAILTRAP_TOKEN)
-        client.send(mail)
-        print("Notification email sent.")
+        message = f"Subject: {subject}\nTo: {', '.join(to_emails)}\nFrom: {GMAIL_FROM_EMAIL}\n\n{body}"
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(GMAIL_FROM_EMAIL, GMAIL_FROM_EMAIL_PASSWORD)
+            server.sendmail(GMAIL_FROM_EMAIL, to_emails, message)
+        print(f"Notification email sent to: {', '.join(to_emails)}.")
     except Exception as e:
         print(f"Failed to send email: {e}")
+
 
 
 if __name__ == "__main__":
@@ -134,7 +133,7 @@ if __name__ == "__main__":
                     send_email(
                         "Holland2Stay Rentals Numbers Changed",
                         f"The count of available rentals has changed from {last_count} to {count}. Check {URL}",
-                        MAILTRAP_TO_EMAIL
+                        GMAIL_TO_EMAILS
                     )
                     append_booking_change(count, now_iso)
                 elif last_count is None:
